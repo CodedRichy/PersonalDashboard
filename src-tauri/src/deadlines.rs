@@ -1,35 +1,45 @@
 use crate::model::Deadline;
 use chrono::NaiveDate;
-use serde::Deserialize;
 use std::{fs, path::Path};
 
-#[derive(Deserialize)]
-struct Raw {
-    title: String,
-    due: String,
-    #[serde(default)]
-    project: Option<String>,
-}
-
 const SAMPLE: &str = "# Add deadlines as a list. Dates are YYYY-MM-DD.\n# - title: Submit lab report\n#   due: 2026-10-12\n#   project: ktu\n";
+
+fn entry(v: &serde_yaml::Value) -> Result<Deadline, String> {
+    let title = v.get("title").and_then(|t| t.as_str()).map(str::to_string);
+    let due = v.get("due").map(|d| match d {
+        serde_yaml::Value::String(s) => s.clone(),
+        other => serde_yaml::to_string(other).unwrap_or_default().trim().to_string(),
+    });
+    let shown = title.clone().unwrap_or_else(|| "(no title)".to_string());
+    let (Some(title), Some(due)) = (title, due) else {
+        return Err(format!("deadlines.yaml: entry \"{shown}\" needs both title: and due:"));
+    };
+    let project = v.get("project").and_then(|p| p.as_str()).map(str::to_string);
+    match NaiveDate::parse_from_str(due.trim(), "%Y-%m-%d") {
+        Ok(due) => Ok(Deadline { title, due, project }),
+        Err(_) => Err(format!(
+            "deadlines.yaml: \"{title}\" has a bad date \"{due}\" (use YYYY-MM-DD)"
+        )),
+    }
+}
 
 pub fn parse(text: &str) -> (Vec<Deadline>, Vec<String>) {
     if text.lines().all(|l| l.trim().is_empty() || l.trim_start().starts_with('#')) {
         return (vec![], vec![]);
     }
-    let raws: Vec<Raw> = match serde_yaml::from_str(text) {
-        Ok(r) => r,
+    let value: serde_yaml::Value = match serde_yaml::from_str(text) {
+        Ok(v) => v,
         Err(e) => return (vec![], vec![format!("deadlines.yaml could not be read: {e}")]),
+    };
+    let Some(entries) = value.as_sequence() else {
+        return (vec![], vec!["deadlines.yaml should be a list: start each deadline with \"- title:\"".to_string()]);
     };
     let mut out = Vec::new();
     let mut warnings = Vec::new();
-    for r in raws {
-        match NaiveDate::parse_from_str(r.due.trim(), "%Y-%m-%d") {
-            Ok(due) => out.push(Deadline { title: r.title, due, project: r.project }),
-            Err(_) => warnings.push(format!(
-                "deadlines.yaml: \"{}\" has a bad date \"{}\" (use YYYY-MM-DD)",
-                r.title, r.due
-            )),
+    for e in entries {
+        match entry(e) {
+            Ok(d) => out.push(d),
+            Err(w) => warnings.push(w),
         }
     }
     (out, warnings)
@@ -92,5 +102,26 @@ mod tests {
         assert!(ds.is_empty() && w.is_empty());
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# - title:"));
+    }
+
+    #[test]
+    fn entry_missing_a_key_skips_only_that_entry() {
+        let (ds, w) = parse("- title: Good
+  due: 2026-10-12
+- title: NoDue
+- date: 2026-10-13
+  title: Misspelled
+");
+        assert_eq!(ds.len(), 1);
+        assert_eq!(w.len(), 2);
+    }
+
+    #[test]
+    fn top_level_not_a_list_warns() {
+        let (ds, w) = parse("title: oops
+due: 2026-10-12
+");
+        assert!(ds.is_empty());
+        assert_eq!(w.len(), 1);
     }
 }

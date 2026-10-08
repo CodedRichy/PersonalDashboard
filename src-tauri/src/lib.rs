@@ -13,31 +13,39 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
-#[tauri::command]
-fn get_day(app: tauri::AppHandle) -> DayView {
+fn compute_day(home: std::path::PathBuf, data_dir: Option<std::path::PathBuf>) -> DayView {
     let now = Local::now();
     let today = now.date_naive();
     let mut warnings = Vec::new();
 
-    let home = app.path().home_dir().unwrap_or_default();
     let repos = git::scan(&home.join("Documents").join("GitHub"), now.timestamp());
     let notes = vault::project_note_names(
         &home.join("Documents").join("Vault").join("_brain").join("projects"),
     );
 
-    let deadlines = match app.path().app_data_dir() {
-        Ok(dir) => {
+    let deadlines = match data_dir {
+        Some(dir) => {
             let (d, w) = deadlines::load(&dir.join("deadlines.yaml"));
             warnings.extend(w);
             d
         }
-        Err(e) => {
-            warnings.push(format!("app data folder unavailable: {e}"));
+        None => {
+            warnings.push("app data folder unavailable".to_string());
             vec![]
         }
     };
 
     rank::build_day(today, &deadlines, &repos, &notes, warnings)
+}
+
+// async + spawn_blocking keeps the git scan off the main thread, so the window and tray stay alive.
+#[tauri::command]
+async fn get_day(app: tauri::AppHandle) -> Result<DayView, String> {
+    let home = app.path().home_dir().unwrap_or_default();
+    let data_dir = app.path().app_data_dir().ok();
+    tauri::async_runtime::spawn_blocking(move || compute_day(home, data_dir))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn show_main(app: &tauri::AppHandle) {

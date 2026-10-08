@@ -1,19 +1,51 @@
 use crate::model::RepoInfo;
-use std::{path::Path, process::Command};
+use std::{
+    io::Read,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::{Duration, Instant},
+};
 
-fn git(path: &Path, args: &[&str]) -> Option<String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(path).args(args);
+const GIT_TIMEOUT: Duration = Duration::from_secs(8);
+
+pub fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<String> {
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash
     }
-    let out = cmd.output().ok()?;
-    if !out.status.success() {
-        return None;
+    let mut child = cmd.spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let start = Instant::now();
+    loop {
+        match child.try_wait().ok()? {
+            Some(status) => {
+                let buf = reader.join().ok()?;
+                return status
+                    .success()
+                    .then(|| String::from_utf8_lossy(&buf).trim().to_string());
+            }
+            None if start.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return None;
+            }
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
     }
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn git(path: &Path, args: &[&str]) -> Option<String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(path).args(args).env("GIT_TERMINAL_PROMPT", "0");
+    run_with_timeout(cmd, GIT_TIMEOUT)
 }
 
 pub fn inspect(path: &Path, now_epoch: i64) -> Option<RepoInfo> {
@@ -30,11 +62,14 @@ pub fn inspect(path: &Path, now_epoch: i64) -> Option<RepoInfo> {
 
 pub fn scan(root: &Path, now_epoch: i64) -> Vec<RepoInfo> {
     let Ok(entries) = std::fs::read_dir(root) else { return vec![] };
-    entries
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_dir())
-        .filter_map(|e| inspect(&e.path(), now_epoch))
-        .collect()
+    let dirs: Vec<PathBuf> =
+        entries.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let mut repos: Vec<RepoInfo> = std::thread::scope(|s| {
+        let handles: Vec<_> = dirs.iter().map(|d| s.spawn(move || inspect(d, now_epoch))).collect();
+        handles.into_iter().filter_map(|h| h.join().ok().flatten()).collect()
+    });
+    repos.sort_by(|a, b| a.name.cmp(&b.name));
+    repos
 }
 
 #[cfg(test)]
@@ -116,5 +151,15 @@ mod tests {
     #[test]
     fn scan_of_missing_root_is_empty() {
         assert!(scan(Path::new("Z:/definitely/not/here"), now()).is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hung_command_is_killed_after_timeout() {
+        let mut c = Command::new("ping");
+        c.args(["-n", "30", "127.0.0.1"]);
+        let start = std::time::Instant::now();
+        assert!(run_with_timeout(c, std::time::Duration::from_millis(300)).is_none());
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
     }
 }

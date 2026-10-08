@@ -4,6 +4,10 @@ use chrono::NaiveDate;
 pub const DUE_WINDOW_DAYS: i64 = 3;
 pub const STALE_DAYS: i64 = 14;
 
+fn norm(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+}
+
 fn plural(n: i64, one: &str, many: &str) -> String {
     if n == 1 { format!("{n} {one}") } else { format!("{n} {many}") }
 }
@@ -45,7 +49,7 @@ pub fn build_day(
     let mut stale: Vec<&RepoInfo> = repos
         .iter()
         .filter(|r| r.unpushed == 0 && r.last_commit_days >= STALE_DAYS)
-        .filter(|r| vault_notes.iter().any(|n| n.eq_ignore_ascii_case(&r.name)))
+        .filter(|r| vault_notes.iter().any(|n| norm(n) == norm(&r.name)))
         .collect();
     stale.sort_by(|a, b| b.last_commit_days.cmp(&a.last_commit_days).then(a.name.cmp(&b.name)));
     items.extend(stale.iter().map(|r| Item {
@@ -168,5 +172,15 @@ mod tests {
         let day = build_day(d("2026-10-08"), &[], &[], &[], vec![]);
         assert!(day.items.is_empty());
         assert_eq!(day.stats.open, 0);
+    }
+
+    #[test]
+    fn stale_matches_kebab_case_note_to_camel_case_repo() {
+        let day = build_day(
+            d("2026-10-08"), &[],
+            &[repo("AnthropicSkillJar", 0, 30), repo("VeridockAI", 0, 30)],
+            &["anthropic-skilljar".to_string(), "veridock-ai".to_string()], vec![],
+        );
+        assert_eq!(day.items.len(), 2);
     }
 }

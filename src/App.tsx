@@ -1,12 +1,23 @@
-import { createResource, For, Show } from "solid-js";
+import { createResource, For, onCleanup, onMount, Show } from "solid-js";
 import { getDay } from "./api";
 import StatTrio from "./components/StatTrio";
 import TaskCard from "./components/TaskCard";
 import Schedule from "./components/Schedule";
 
 export default function App() {
-  const [day] = createResource(getDay);
-  const ready = () => day.state === "ready";
+  const [day, { refetch }] = createResource(getDay);
+  const ready = () => day.state === "ready" || day.state === "refreshing";
+
+  // The app lives in the tray for days: reload whenever the window is shown again.
+  onMount(() => {
+    const reload = () => { if (!document.hidden) refetch(); };
+    window.addEventListener("focus", reload);
+    document.addEventListener("visibilitychange", reload);
+    onCleanup(() => {
+      window.removeEventListener("focus", reload);
+      document.removeEventListener("visibilitychange", reload);
+    });
+  });
   return (
     <main class="shell">
       <header>

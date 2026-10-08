@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "@solidjs/testing-library";
 import { describe, it, expect, vi } from "vitest";
 import { fixture } from "./fixture";
 
@@ -36,5 +36,15 @@ describe("App", () => {
     vi.mocked(getDay).mockRejectedValue(new Error("boom"));
     render(() => <App />);
     expect(await screen.findByText(/could not load/i)).toBeInTheDocument();
+  });
+
+  it("reloads when the window regains focus", async () => {
+    vi.mocked(getDay).mockClear();
+    vi.mocked(getDay).mockResolvedValue(fixture);
+    render(() => <App />);
+    await screen.findByText("Lab report", { selector: ".card h3" });
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => expect(getDay).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Lab report", { selector: ".card h3" })).toBeInTheDocument();
   });
 });
