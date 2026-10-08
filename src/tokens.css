@@ -1,0 +1,37 @@
+@import "@fontsource-variable/plus-jakarta-sans";
+
+:root {
+  --font: "Plus Jakarta Sans Variable", system-ui, sans-serif;
+  --bg: oklch(0.985 0.004 320);
+  --ink: oklch(0.22 0.02 280);
+  --ink-2: oklch(0.45 0.02 280);
+  --line: oklch(0.92 0.008 280);
+  --card: oklch(1 0 0 / 0.8);
+  --shadow: 0 1px 2px oklch(0.3 0.02 280 / 0.06), 0 8px 24px oklch(0.3 0.02 280 / 0.06);
+
+  --due: oklch(0.955 0.04 55);      --due-ink: oklch(0.45 0.14 50);
+  --work: oklch(0.955 0.035 320);   --work-ink: oklch(0.43 0.13 320);
+  --stale: oklch(0.955 0.015 240);  --stale-ink: oklch(0.43 0.05 240);
+  --clear: oklch(0.955 0.045 155);  --clear-ink: oklch(0.4 0.1 155);
+
+  --radius: 22px;
+  --gap: clamp(12px, 1vw + 8px, 20px);
+  --fs-title: clamp(1.6rem, 1.2rem + 1.2vw, 2.2rem);
+  --fs-stat: clamp(2rem, 1.4rem + 2vw, 3rem);
+  --fs-body: clamp(0.85rem, 0.8rem + 0.2vw, 0.95rem);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  color: var(--ink);
+  background:
+    radial-gradient(60rem 40rem at 0% 0%, oklch(0.95 0.04 320 / 0.7), transparent 60%),
+    radial-gradient(50rem 40rem at 100% 100%, oklch(0.95 0.05 155 / 0.6), transparent 60%),
+    radial-gradient(40rem 30rem at 70% 90%, oklch(0.96 0.04 55 / 0.5), transparent 60%),
+    var(--bg);
+  min-height: 100vh;
+}
