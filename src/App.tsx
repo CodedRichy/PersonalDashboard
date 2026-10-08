@@ -1,51 +1,37 @@
-import { createSignal } from "solid-js";
-import logo from "./assets/logo.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { createResource, For, Show } from "solid-js";
+import { getDay } from "./api";
+import StatTrio from "./components/StatTrio";
+import TaskCard from "./components/TaskCard";
+import Schedule from "./components/Schedule";
 
-function App() {
-  const [greetMsg, setGreetMsg] = createSignal("");
-  const [name, setName] = createSignal("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name: name() }));
-  }
-
+export default function App() {
+  const [day] = createResource(getDay);
+  const ready = () => day.state === "ready";
   return (
-    <main class="container">
-      <h1>Welcome to Tauri + Solid</h1>
-
-      <div class="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" class="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://solidjs.com" target="_blank">
-          <img src={logo} class="logo solid" alt="Solid logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and Solid logos to learn more.</p>
-
-      <form
-        class="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg()}</p>
+    <main class="shell">
+      <header>
+        <h1>My Day</h1>
+        <Show when={ready()}><p class="reason">{day()!.today}</p></Show>
+      </header>
+      <Show when={day.state !== "errored"} fallback={<p class="banner">Could not load your day. Restart the app.</p>}>
+        <Show when={ready() ? day() : undefined} fallback={<p class="reason">Loading...</p>}>
+          {(d) => (
+            <>
+              <For each={d().warnings}>{(w) => <p class="banner">{w}</p>}</For>
+              <StatTrio stats={d().stats} />
+              <div class="cols">
+                <section class="list">
+                  <For each={d().items} fallback={<div class="card card--clear"><h3>All clear</h3><p class="reason">Nothing due, nothing unpushed. Go build something.</p></div>}>
+                    {(i) => <TaskCard item={i} />}
+                  </For>
+                </section>
+                <Schedule entries={d().schedule} />
+              </div>
+              <div class="pet-slot" aria-hidden="true" />
+            </>
+          )}
+        </Show>
+      </Show>
     </main>
   );
 }
-
-export default App;

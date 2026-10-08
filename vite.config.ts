@@ -6,7 +6,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [solid()],
+  plugins: [solid({ hot: !process.env.VITEST })],
   resolve: { conditions: ["browser"] },
   test: { environment: "jsdom", setupFiles: ["./src/test-setup.ts"] },
 
