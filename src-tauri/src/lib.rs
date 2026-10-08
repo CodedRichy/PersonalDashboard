@@ -1,5 +1,8 @@
+mod deadlines;
+mod git;
 mod model;
 mod rank;
+mod vault;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
